@@ -22,11 +22,13 @@ $signature = @"
 
 	const UInt32 SWP_NOSIZE = 0x0001;
 	const UInt32 SWP_NOMOVE = 0x0002;
+	const UInt32 SWP_ASYNCWINDOWPOS = 0x4000;
+	const UInt32 SWP_NOACTIVATE = 0x0010;
 
     const int GWL_EXSTYLE = -20;
     const int WS_EX_TOPMOST = 0x0008;
 
-	const UInt32 TOPMOST_FLAGS = SWP_NOMOVE | SWP_NOSIZE;
+	const UInt32 TOPMOST_FLAGS = SWP_NOMOVE | SWP_NOSIZE | SWP_ASYNCWINDOWPOS | SWP_NOACTIVATE;
 
 	public static void MakeTopMost (IntPtr fHandle) {
 		SetWindowPos(fHandle, HWND_TOPMOST, 0, 0, 0, 0, TOPMOST_FLAGS);
