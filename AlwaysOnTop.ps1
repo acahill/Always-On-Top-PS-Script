@@ -1,7 +1,4 @@
-#Requires -Version 2.0 
-param(
-    [switch]$multi = $false
-)
+#Requires -Version 2.0
 
 $signature = @"
 	[DllImport("user32.dll")]
@@ -46,6 +43,7 @@ $signature = @"
 "@
 
 $app = Add-Type -MemberDefinition $signature -Name Win32Window -Namespace ScriptFanatic.WinAPI -ReferencedAssemblies System.Windows.Forms -Using System.Windows.Forms -PassThru
+$objListBox = New-Object System.Windows.Forms.ListView
 
 function Set-TopMost {
 	param(		
@@ -59,7 +57,6 @@ function Set-TopMost {
 			$null = $app::MakeNormal($hWnd)
 			return
 		}
-		
 		Write-Host "Set process handle :$hWnd to TOPMOST state"
 		$null = $app::MakeTopMost($hWnd)
 	}
@@ -67,6 +64,7 @@ function Set-TopMost {
 		Write-Verbose "$hWnd is 0"
 	}
 }
+
 
 function Is-TopMost {
     param(		
@@ -78,9 +76,11 @@ function Is-TopMost {
     return 0
 }
 
+
 function getOpenApplications() {
     return Get-Process | Where-Object {$_.MainWindowTitle -ne ""} | Select-Object Id,MainWindowHandle,MainWindowTitle,Name,ProcessName,@{Name="TopMost"; Expression={Is-TopMost($_.MainWindowHandle)}}
 }
+
 
 function Get-WindowByTitle($WindowTitle="*") {
 	Write-Verbose "WindowTitle is: $WindowTitle"
@@ -97,66 +97,27 @@ function Get-WindowByTitle($WindowTitle="*") {
 }
 
 
-function forceApplicationOnTop($chosenApplication) {
-    Write-Host "Chosen Window: "$chosenApplication
+function forceApplicationsOnTop() {
+    $chosenApplications = $objListBox.CheckedItems
+    Write-Host "Chosen Windows: $chosenApplications"
+    Write-Host "Disabling other topmost windows..."
+    $openApplications = getOpenApplications
 
-    if (!$multi) {
-        Write-Host "Disabling other topmost windows..."
-        $openApplications = getOpenApplications
-
-        $openApplications | ForEach-Object {
-            Get-WindowByTitle $_.MainWindowTitle | Set-TopMost -Disable
-        }
+    $openApplications | ForEach-Object {
+        Get-WindowByTitle $_.MainWindowTitle | Set-TopMost -Disable
     }
-    Get-WindowByTitle $chosenApplication | Set-TopMost 
 
+    $chosenApplications | ForEach-Object {
+        Get-WindowByTitle $_.Text | Set-TopMost
+    }
+    populateListBox
 }
 
-function createDropdownBox($openApplications) {
-    [void] [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms")
-    [void] [System.Reflection.Assembly]::LoadWithPartialName("System.Drawing") 
 
-    $width = 650
-
-    $objForm = New-Object System.Windows.Forms.Form 
-    $objForm.Text = "Always On Top"
-    $objForm.Size = New-Object System.Drawing.Size($width,400) 
-    $objForm.StartPosition = "CenterScreen"
-
-    $objForm.KeyPreview = $True
-    $objForm.Add_KeyDown({if ($_.KeyCode -eq "Enter") {$x=$objListBox.SelectedItem;$objForm.Close()}})
-    $objForm.Add_KeyDown({if ($_.KeyCode -eq "Escape") {$objForm.Close()}})
-
-    $OKButton = New-Object System.Windows.Forms.Button
-    $OKButton.Location = New-Object System.Drawing.Size(300,330)
-    $OKButton.Size = New-Object System.Drawing.Size(75,23)
-    $OKButton.Text = "OK"
-    $OKButton.Add_Click({$x=$objListBox.SelectedItem;$objForm.Close()})
-    $objForm.Controls.Add($OKButton)
-
-    $CancelButton = New-Object System.Windows.Forms.Button
-    $CancelButton.Location = New-Object System.Drawing.Size(400,330)
-    $CancelButton.Size = New-Object System.Drawing.Size(75,23)
-    $CancelButton.Text = "Cancel"
-    $CancelButton.Add_Click({$objForm.Close()})
-    $objForm.Controls.Add($CancelButton)
-
-    $objLabel = New-Object System.Windows.Forms.Label
-    $objLabel.Location = New-Object System.Drawing.Size(10,20) 
-    $objLabel.Size = New-Object System.Drawing.Size(($width-35), 20)
-    $objLabel.Text = "Select a window to keep on top:"
-    $objForm.Controls.Add($objLabel) 
-
-    $objListBox = New-Object System.Windows.Forms.ListView
-    $objListBox.Location = New-Object System.Drawing.Size(10,40)
-    $objListBox.Size = New-Object System.Drawing.Size(($width-35),20)
-    $objListBox.Height = 280
-    $objListBox.View = [System.Windows.Forms.View]::Details
-    $objListBox.CheckBoxes = 1
-
-    [void] $objListBox.Columns.Add("     Title", -2)
-    [void] $objListBox.Columns.Add("Process Name", -2)
-
+function populateListBox() {
+    Write-Host "Refreshing window list"
+    $openApplications = getOpenApplications
+    $objListBox.Items.Clear()
     $openApplications | ForEach-Object {
         $item = New-Object System.Windows.Forms.ListViewItem($_.MainWindowTitle)
         [void] $item.SubItems.Add($_.ProcessName)
@@ -166,29 +127,83 @@ function createDropdownBox($openApplications) {
         }
         [void] $objListBox.Items.Add($item)
     }
+}
+
+
+function createForm($openApplications) {
+    [void] [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms")
+    [void] [System.Reflection.Assembly]::LoadWithPartialName("System.Drawing") 
+
+    $width = 650
+
+    $objForm = New-Object System.Windows.Forms.Form
+    $objForm.Text = "Always On Top"
+    $objForm.Size = New-Object System.Drawing.Size($width,400) 
+    $objForm.StartPosition = "CenterScreen"
+    $objForm.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedSingle
+
+    $objForm.KeyPreview = $True
+    $objForm.Add_KeyDown({ if ($_.KeyCode -eq "Enter") { forceApplicationsOnTop } })
+    $objForm.Add_KeyDown({ if ($_.KeyCode -eq "Escape") { $objForm.Close() } })
+
+    $ApplyButton = New-Object System.Windows.Forms.Button
+    $ApplyButton.Location = New-Object System.Drawing.Size(175,330)
+    $ApplyButton.Size = New-Object System.Drawing.Size(75,23)
+    $ApplyButton.Text = "Apply"
+    $ApplyButton.Add_Click({ forceApplicationsOnTop })
+    $objForm.Controls.Add($ApplyButton)
+
+    $RefreshButton = New-Object System.Windows.Forms.Button
+    $RefreshButton.Location = New-Object System.Drawing.Size(275,330)
+    $RefreshButton.Size = New-Object System.Drawing.Size(75,23)
+    $RefreshButton.Text = "Refresh"
+    $RefreshButton.Add_Click({ populateListBox })
+    $objForm.Controls.Add($RefreshButton)
+
+    $CloseButton = New-Object System.Windows.Forms.Button
+    $CloseButton.Location = New-Object System.Drawing.Size(375,330)
+    $CloseButton.Size = New-Object System.Drawing.Size(75,23)
+    $CloseButton.Text = "Close"
+    $CloseButton.Add_Click({ $objForm.Close() })
+    $objForm.Controls.Add($CloseButton)
+
+    $objLabel = New-Object System.Windows.Forms.Label
+    $objLabel.Location = New-Object System.Drawing.Size(10,20) 
+    $objLabel.Size = New-Object System.Drawing.Size(($width - 35), 20)
+    $objLabel.Text = "Select a window to keep on top:"
+    $objForm.Controls.Add($objLabel) 
+
+    $objListBox.Location = New-Object System.Drawing.Size(10,40)
+    $objListBox.Size = New-Object System.Drawing.Size(($width - 27),20)
+    $objListBox.Height = 280
+    $objListBox.View = [System.Windows.Forms.View]::Details
+    $objListBox.CheckBoxes = 1
+    $objListBox.MultiSelect = 0
+    $objListBox.FullRowSelect = 1
+    $objListBox.HideSelection = 1
+
+    $objListBox.Add_ItemSelectionChanged({
+        param($listview, $e)
+        if ($e.IsSelected) {
+            $e.Item.Selected = 0
+            $e.Item.Checked = !$e.Item.Checked
+        }
+    })
+
+    [void] $objListBox.Columns.Add("     Title",   [int]($width - ($width / 4)))
+    [void] $objListBox.Columns.Add("Process Name", [int]($width / 4 - 40))
+
+    populateListBox
 
     $objForm.Controls.Add($objListBox) 
 
-    $objForm.Topmost = $True
-
-    $objForm.Add_Shown({$objForm.Activate()})
+    $objForm.Add_Shown({ $objForm.Activate() })
     [void] $objForm.ShowDialog()
-
-    if ($objListBox.SelectedItems) {
-        $x=$objListBox.SelectedItems[0].SubItems[0].Text
-    }
-    return $x
 }
+
 
 ############ Script starts here ###################
 
 getOpenApplications | Format-Table
-Write-Host "Multiple windows topmost = $multi"
 $openApplications = getOpenApplications
-$chosenApplication = createDropdownBox($openApplications)
-Write-Host "Selected Window = $chosenApplication"
-
-if ($chosenApplication) {
-    forceApplicationOnTop($chosenApplication)
-    getOpenApplications | Format-Table
-}
+$chosenApplication = createForm($openApplications)
