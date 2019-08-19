@@ -15,7 +15,10 @@ $signature = @"
 	public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll")]
-    public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    public static extern int GetWindowLongPtr(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll")]
+    public static extern int SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 
 	static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
 	static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
@@ -31,6 +34,11 @@ $signature = @"
 	const UInt32 TOPMOST_FLAGS = SWP_NOMOVE | SWP_NOSIZE | SWP_ASYNCWINDOWPOS | SWP_NOACTIVATE;
 
 	public static void MakeTopMost (IntPtr fHandle) {
+
+        var extStyle = GetWindowLongPtr(fHandle, GWL_EXSTYLE);
+        extStyle |= WS_EX_TOPMOST;
+        SetWindowLongPtr(fHandle, GWL_EXSTYLE, new IntPtr(extStyle));
+
 		SetWindowPos(fHandle, HWND_TOPMOST, 0, 0, 0, 0, TOPMOST_FLAGS);
 	}
 
@@ -39,7 +47,7 @@ $signature = @"
 	}
 
     public static bool IsWindowTopMost(IntPtr hWnd) {
-        int exStyle = GetWindowLong(hWnd, GWL_EXSTYLE);
+        int exStyle = GetWindowLongPtr(hWnd, GWL_EXSTYLE);
         return (exStyle & WS_EX_TOPMOST) == WS_EX_TOPMOST;
     }
 "@
@@ -110,7 +118,11 @@ function forceApplicationsOnTop() {
     }
 
     $chosenApplications | ForEach-Object {
-        Get-WindowByTitle $_.Text | Set-TopMost
+        $attempts = 0
+        $window = Get-WindowByTitle($_.Text)
+        DO {
+            Set-TopMost($window.MainWindowHandle)
+        } While ( -not (Is-TopMost($window.MainWindowHandle)) -and $attempts++ -lt 20)
     }
     populateListBox
 }
@@ -132,7 +144,7 @@ function populateListBox() {
 }
 
 
-function createForm($openApplications) {
+function createForm() {
     [void] [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms")
     [void] [System.Reflection.Assembly]::LoadWithPartialName("System.Drawing") 
 
@@ -206,6 +218,6 @@ function createForm($openApplications) {
 
 ############ Script starts here ###################
 
-getOpenApplications | Format-Table
-$openApplications = getOpenApplications
-$chosenApplication = createForm($openApplications)
+# getOpenApplications | Format-Table
+
+createForm
